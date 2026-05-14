@@ -16,8 +16,7 @@ library(tidyr)
 # =======================================================
 
 dataset_paths <- list(
-  IM210 = "/proj/c.zihao/work1/3drugs/immune/IM210/data/exprSet.csv",
-  PRJEB23709 = "/proj/c.zihao/work1/3drugs/immune/PRJEB23709/data/exprSet.csv"
+  IM210 = "/proj/c.zihao/work1/3drugs/immune/IM210/data/exprSet.csv"
 )
 
 

@@ -4,13 +4,12 @@ import sys
 sys.path.append(r"/proj/c.zihao/work1/function/")
 import SSN
 
-available_datasets = ['IM210',  'PRJEB23709']
+available_datasets = ['IM210']
 
 researchAim = "immune"
 
 dataset_organ_map = {
-    "IM210": "Bladder",
-    "PRJEB23709": "Skin"
+    "IM210": "Bladder"
 }
 
 NormalFile = "/proj/c.zihao/work1/0ref/normal/combined_expr_df.csv"  

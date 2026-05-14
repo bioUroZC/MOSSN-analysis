@@ -6,7 +6,7 @@ import sys
 sys.path.append(r"/proj/c.zihao/work1/function/")
 import MOSSN_noPrior
 
-available_datasets = ['IM210',  'PRJEB23709']
+available_datasets = ['IM210']
 
 researchAim = "immune"
 

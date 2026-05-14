@@ -4,7 +4,7 @@ set.seed(42)
 
 researchAim <- "immune"
 
-available_datasets <- c('IM210',  'PRJEB23709')
+available_datasets <- c('IM210')
 
 
 source('/proj/c.zihao/work1/function/LIONESS.R')
