@@ -1,0 +1,289 @@
+# =================================================================
+rm(list = ls())
+library(dplyr)
+library(igraph)
+library(tidyr)
+library(data.table)
+library(survival)
+library(glmnet)
+library(survcomp)
+library(timeROC)
+library(caret)
+library(pROC)
+
+# =================================================================
+
+dieasename <- "CRC"
+
+variableNumber <- 0.2
+sampleNumber <- 500
+n_repeats <- 10
+matrix_SeleNum <- c(1, 2, 3, 4, 5, 6, 7, 8)
+base_path <- "/proj/c.zihao/work1/2survival/"
+surDir <- paste0(base_path, dieasename, "/2sur/")
+netDir <- paste0(base_path, dieasename, "/2sur/net/")
+
+setwd(surDir)
+survdata <- read.csv('survdata.csv', row.names = 1)
+
+head(survdata)
+table(survdata$dataset)
+
+survdata <- subset(survdata, survdata$OS_Time > 0)
+
+cox_screen_topN <- function(train_df, time_col, event_col, feature_cols, topN = variableNumber) {
+  pvals <- sapply(feature_cols, function(g) {
+    fml <- as.formula(paste0("Surv(", time_col, ",", event_col, ") ~ `", g, "`"))
+    tryCatch({
+      fit <- coxph(fml, data = train_df, ties = "efron")
+      s <- summary(fit)
+      if (nrow(s$coefficients) == 0) return(1.0)
+      pval <- s$coefficients[1, "Pr(>|z|)"]
+      if (!is.finite(pval)) 1.0 else pval
+    }, error = function(e) 1.0)
+  })
+  names(pvals) <- feature_cols
+  ord <- order(pvals, na.last = TRUE)
+  names(pvals)[ord][1:min(topN, length(pvals))]
+}
+
+safe_concordance_index <- function(risk_scores, surv_time, surv_event) {
+  if (length(unique(risk_scores[is.finite(risk_scores)])) <= 1) {
+    return(0.5)
+  }
+
+  cidx <- concordance.index(
+    x = risk_scores,
+    surv.time = surv_time,
+    surv.event = surv_event
+  )$c.index
+
+  if (is.na(cidx)) {
+    return(0.5)
+  }
+
+  cidx
+}
+
+safe_mean_auc <- function(risk_scores, surv_time, surv_event) {
+  if (length(unique(risk_scores[is.finite(risk_scores)])) <= 1) {
+    return(0.5)
+  }
+
+  timepoints <- quantile(surv_time, probs = c(0.05, 0.25, 0.5, 0.75, 0.95))
+  timepoints <- unique(as.numeric(timepoints))
+  timepoints <- timepoints[is.finite(timepoints) & timepoints > 0]
+
+  if (length(timepoints) == 0) {
+    return(0.5)
+  }
+
+  td_auc <- tryCatch(
+    timeROC(
+      T = surv_time,
+      delta = surv_event,
+      marker = risk_scores,
+      cause = 1,
+      times = timepoints
+    ),
+    error = function(e) NULL
+  )
+
+  if (is.null(td_auc)) {
+    return(0.5)
+  }
+
+  mean(td_auc$AUC, na.rm = TRUE)
+}
+
+
+# =================================================================
+
+# Prepare result storage
+cindex_results <- numeric(length(matrix_SeleNum))
+auc_results    <- numeric(length(matrix_SeleNum))
+
+all_results <- data.frame(
+  File = character(),
+  Dataset = character(),
+  C_index = numeric(),
+  Mean_tAUC = numeric(),
+  stringsAsFactors = FALSE
+)
+
+
+# Loop through PPPbi1.csv to PPPbi8.csv
+for (k in seq_along(matrix_SeleNum)) {
+  i <- matrix_SeleNum[k]
+  message(paste("Processing PPPbi", i, ".csv", sep = ""))
+
+  net_path <- paste0(netDir, "PPPbi", i, ".csv")
+  net <- read.csv(net_path, header = TRUE, row.names = 1)
+  print(dim(net))
+
+  net <- as.data.frame(t(net))
+  net$Sample <- rownames(net)
+
+  # Merge with survival data
+  data <- merge(survdata, net, by = "Sample")
+  rownames(data) <- data$Sample
+  data$Sample <- NULL
+  data$dataset <- NULL   # not needed for random split
+
+  cidx_list <- c()
+  auc_list  <- c()
+
+  for (r in seq_len(n_repeats)) {
+
+    set.seed(r)
+    train_idx  <- sample(nrow(data), floor(nrow(data) * 0.8))
+    train_data <- data[ train_idx, ]
+    test_data  <- data[-train_idx, ]
+
+    # Cap training set size
+    if (nrow(train_data) > sampleNumber) {
+      set.seed(r + 1000)
+      train_data_subset <- train_data[sample(nrow(train_data), sampleNumber), ]
+    } else {
+      train_data_subset <- train_data
+    }
+
+    print(dim(train_data_subset))
+
+    # Step 1: feature screening on training subset
+    outcome_cols <- c("OS", "OS_Time")
+    feature_cols <- setdiff(colnames(train_data_subset), outcome_cols)
+
+    top_feature_n <- max(1, ceiling(length(feature_cols) * variableNumber))
+
+    top_features <- cox_screen_topN(
+      train_df   = train_data_subset,
+      time_col   = "OS_Time",
+      event_col  = "OS",
+      feature_cols = feature_cols,
+      topN       = top_feature_n
+    )
+
+    # Step 2: Reduce to top features
+    selected_features <- c("OS", "OS_Time", top_features)
+    train_data_sel <- train_data[, selected_features]
+    test_data_sel  <- test_data[,  selected_features]
+
+    # Step 3: Train lasso Cox model
+    x_train <- as.matrix(train_data_sel[, top_features, drop = FALSE])
+    x_test  <- as.matrix(test_data_sel[,  top_features, drop = FALSE])
+    y_train <- Surv(train_data_sel$OS_Time, train_data_sel$OS)
+
+    train_var     <- apply(x_train, 2, var, na.rm = TRUE)
+    keep_features <- names(train_var)[is.finite(train_var) & train_var > 0]
+
+    if (length(keep_features) > 0) {
+      x_train <- x_train[, keep_features, drop = FALSE]
+      x_test  <- x_test[,  keep_features, drop = FALSE]
+    } else {
+      x_train <- NULL
+      x_test  <- NULL
+    }
+
+    risk_scores <- rep(0, nrow(test_data_sel))
+
+    if (!is.null(x_train) && ncol(x_train) > 0) {
+      nfolds_use <- max(3, min(5, nrow(x_train)))
+
+      glmnet_fit <- tryCatch({
+        cvfit <- cv.glmnet(
+          x = x_train,
+          y = y_train,
+          family = "cox",
+          alpha = 1,
+          nfolds = nfolds_use
+        )
+        glmnet(
+          x = x_train,
+          y = y_train,
+          family = "cox",
+          alpha = 1,
+          lambda = cvfit$lambda.min
+        )
+      }, error = function(e) NULL)
+
+      if (!is.null(glmnet_fit)) {
+        risk_scores <- as.numeric(
+          predict(glmnet_fit, newx = x_test, type = "link")
+        )
+      } else if (length(keep_features) > 0) {
+        fallback_feature <- keep_features[1]
+        fallback_formula <- as.formula(
+          paste0("Surv(OS_Time, OS) ~ `", fallback_feature, "`")
+        )
+
+        fallback_fit <- tryCatch(
+          coxph(fallback_formula, data = train_data_sel, ties = "efron"),
+          error = function(e) NULL
+        )
+
+        if (!is.null(fallback_fit)) {
+          fallback_pred <- tryCatch(
+            predict(fallback_fit, newdata = test_data_sel, type = "lp"),
+            error = function(e) NULL
+          )
+
+          if (!is.null(fallback_pred)) {
+            risk_scores <- as.numeric(fallback_pred)
+          }
+        }
+      }
+    }
+
+    sampled_test_scores_df <- data.frame(
+      OS          = test_data_sel$OS,
+      Time        = test_data_sel$OS_Time,
+      risk_scores = risk_scores
+    )
+
+    # Step 5: C-index
+    cidx <- safe_concordance_index(
+      risk_scores = sampled_test_scores_df$risk_scores,
+      surv_time   = sampled_test_scores_df$Time,
+      surv_event  = sampled_test_scores_df$OS
+    )
+    cidx_list <- c(cidx_list, cidx)
+
+    # Step 6: Time-dependent AUC
+    auc_val <- safe_mean_auc(
+      risk_scores = sampled_test_scores_df$risk_scores,
+      surv_time   = sampled_test_scores_df$Time,
+      surv_event  = sampled_test_scores_df$OS
+    )
+    auc_list <- c(auc_list, auc_val)
+
+    all_results <- rbind(
+      all_results,
+      data.frame(
+        File      = paste0("PPPbi", i),
+        Dataset   = paste0("Rep", r),
+        C_index   = cidx,
+        Mean_tAUC = auc_val,
+        stringsAsFactors = FALSE
+      )
+    )
+
+    message(sprintf("  Rep%d | C-index: %.4f | Mean AUC: %.4f",
+                    r, cidx, auc_val))
+  }
+
+  print('===========================================================')
+  cindex_results[k] <- mean(cidx_list, na.rm = TRUE)
+  auc_results[k]    <- mean(auc_list,  na.rm = TRUE)
+}
+
+# Combine and display results
+final_results <- all_results
+final_results$Rep <- as.integer(sub("Rep", "", final_results$Dataset))
+final_results <- final_results[, c("File", "Rep", "Dataset",
+                                   "C_index", "Mean_tAUC")]
+
+print(final_results)
+print(surDir)
+setwd(surDir)
+write.csv(all_results, 'lasso_rep.csv')

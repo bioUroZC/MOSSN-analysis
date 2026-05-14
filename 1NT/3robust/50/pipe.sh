@@ -1,0 +1,47 @@
+#!/bin/bash -l
+#SBATCH -J pipe
+#SBATCH -N 1
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=30G
+#SBATCH --array=0-7%8
+#SBATCH -o /proj/c.zihao/work1/1NT/3robust/50/logs/pipe_%A_%a.out
+#SBATCH -e /proj/c.zihao/work1/1NT/3robust/50/logs/pipe_%A_%a.err
+
+set -euo pipefail
+
+PYBIN="$HOME/.conda/envs/work1/bin/python"
+DIR="/proj/c.zihao/work1/1NT/3robust/50"
+
+export LD_LIBRARY_PATH="$HOME/.conda/envs/work1/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+mkdir -p "$DIR/logs"
+
+echo "[env] NODE=$HOSTNAME PART=$SLURM_JOB_PARTITION CPUS=$SLURM_CPUS_PER_TASK"
+"$PYBIN" -V
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+SCRIPTS=(
+    "$DIR/cal_SWEET.py"
+    "$DIR/cal_SSN.py"
+    "$DIR/cal_LIONESS.R"
+    "$DIR/cal_MOSS_full.py"
+    "$DIR/cal_MOSS_uniform.py"
+    "$DIR/cal_Patkar.py"
+    "$DIR/cal_PPIXpress.py"
+    "$DIR/cal_Proteinarium.py"
+)
+
+SCRIPT=${SCRIPTS[$SLURM_ARRAY_TASK_ID]}
+[ -f "$SCRIPT" ] || { echo "[ERR] Script not found: $SCRIPT"; exit 2; }
+
+echo "[task ${SLURM_ARRAY_TASK_ID}] Running: $SCRIPT"
+
+case "${SCRIPT##*.}" in
+    py) srun --cpu-bind=cores "$PYBIN" "$SCRIPT" ;;
+    R)  srun --cpu-bind=cores Rscript "$SCRIPT" ;;
+    *)  echo "[ERR] Unknown extension: $SCRIPT"; exit 2 ;;
+esac

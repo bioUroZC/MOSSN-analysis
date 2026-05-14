@@ -1,0 +1,113 @@
+rm(list = ls())
+
+library(ggplot2)
+library(dplyr)
+
+base_dir <- "/proj/c.zihao/work1/1NT/3robust"
+levels <- c("10", "30", "50", "70")
+level_labels <- c("10" = "10%", "30" = "30%", "50" = "50%", "70" = "70%")
+out_dir <- file.path(base_dir, "plots")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+method_levels <- c(
+  "MOSSN_noPrior", "Patkar", "PPIXpress", "Proteinarium",
+  "SSN", "SWEET", "LIONESS"
+)
+
+method_colors <- c(
+  MOSSN_noPrior = "#67000d",
+  SSN = "#4c78a8",
+  SWEET = "#72b7b2",
+  Patkar = "#c9a227",
+  Proteinarium = "#9d755d",
+  PPIXpress = "#b279a2",
+  LIONESS = "#54a24b"
+)
+
+read_csv_if_nonempty <- function(path) {
+  if (!file.exists(path) || file.info(path)$size <= 3) {
+    return(NULL)
+  }
+
+  tryCatch(
+    read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
+    error = function(e) NULL
+  )
+}
+
+normalize_summary_df <- function(df) {
+  if (is.null(df) || nrow(df) == 0) {
+    return(NULL)
+  }
+
+  first_col <- names(df)[1]
+  if (!"method" %in% names(df) && !is.null(first_col) && first_col %in% c("", "X")) {
+    names(df)[1] <- "method"
+  }
+
+  if (!all(c("method", "consistency") %in% names(df))) {
+    return(NULL)
+  }
+
+  df[, c("method", "consistency"), drop = FALSE]
+}
+
+summary_list <- list()
+
+for (lvl in levels) {
+  summary_file <- file.path(base_dir, lvl, "consistency", "consistency_df.csv")
+  df <- normalize_summary_df(read_csv_if_nonempty(summary_file))
+
+  if (!is.null(df)) {
+    df$level <- lvl
+    summary_list[[lvl]] <- df
+  }
+}
+
+summary_df <- bind_rows(summary_list)
+
+if (nrow(summary_df) == 0) {
+  stop("No valid consistency summary data found under 1NT/3robust/*/consistency/")
+}
+
+summary_df$level <- factor(summary_df$level, levels = levels)
+summary_df <- summary_df %>%
+  filter(method %in% method_levels)
+summary_df$method <- factor(summary_df$method, levels = method_levels)
+summary_df$level <- factor(summary_df$level, levels = levels, labels = level_labels[levels])
+
+write.csv(summary_df, file.path(out_dir, "robust_summary_all.csv"), row.names = FALSE)
+
+make_barplot <- function(data, ncol = 1) {
+  ggplot(data, aes(x = method, y = consistency, fill = method)) +
+    geom_col(width = 0.75) +
+    geom_text(aes(label = sprintf("%.3f", consistency)), vjust = -0.35, size = 3.2) +
+    facet_wrap(~ level, ncol = ncol) +
+    scale_fill_manual(values = method_colors, drop = FALSE) +
+    labs(x = NULL, y = "Mean Spearman consistency") +
+    coord_cartesian(ylim = c(0, 1.02)) +
+    theme_bw(base_size = 12) +
+    theme(
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      strip.background = element_rect(fill = "grey95"),
+      strip.text = element_text(face = "bold")
+    )
+}
+
+p_10 <- make_barplot(filter(summary_df, level == "10%"), ncol = 1)
+ggsave(
+  file.path(out_dir, "robust_barplot_10pct.pdf"),
+  p_10,
+  width = 6,
+  height = 5
+)
+
+p_rest <- make_barplot(filter(summary_df, level != "10%"), ncol = 3)
+ggsave(
+  file.path(out_dir, "robust_barplot_30_50_70pct.pdf"),
+  p_rest,
+  width = 14,
+  height = 5
+)

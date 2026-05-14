@@ -1,0 +1,38 @@
+import os
+import pandas as pd
+from tqdm import tqdm
+import shutil
+import sys
+sys.path.append(r"/proj/c.zihao/work1/function/")
+import MOSSN_noPrior
+
+dataset_name = "LUAD"
+researchAim = "4noise/20"
+base_dir = f"/proj/c.zihao/work1/1NT/{researchAim}"
+save_path = f"{base_dir}/MOSSN_noPrior/{dataset_name}"
+expr_file = f"{base_dir}/data/LUAD_exprSet_noise.csv"
+
+print(f"#========== {dataset_name} ==========")
+
+if os.path.exists(save_path):
+    shutil.rmtree(save_path)
+os.makedirs(save_path)
+os.chdir(save_path)
+
+links = pd.read_csv("/proj/c.zihao/work1/1NT/1data/string/links.csv", index_col=0)
+expression_data = pd.read_csv(expr_file, index_col=0)
+
+G, real_original_weights, expression_data = MOSSN_noPrior.prepare_data_MOSSN_noPrior(
+    links=links,
+    expression_data=expression_data
+)
+print(f"Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
+
+for sample_id in tqdm(expression_data.columns, desc="Processing Samples", unit="sample"):
+    edge_weights_df = MOSSN_noPrior.MOSSN_noPrior_single_sample(
+        sample_id=sample_id,
+        G=G,
+        real_original_weights=real_original_weights,
+        expression_data=expression_data
+    )
+    edge_weights_df.to_csv(f"{sample_id}_edges.csv", index=False)

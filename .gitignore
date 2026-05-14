@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# R
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Editors and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs and temporary files
+*.log
+*.out
+*.err
+*.tmp
+*.temp
+
+# Archives and binary data artifacts
+*.zip
+*.gz
+*.tar
+*.7z
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.h5
+*.hdf5
+
+# Common generated analysis outputs
+**/results/
+**/plots/
+**/output/
+**/consistency/
+

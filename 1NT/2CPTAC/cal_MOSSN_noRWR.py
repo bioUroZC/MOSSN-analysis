@@ -1,0 +1,42 @@
+import os
+import pandas as pd
+from tqdm import tqdm
+import shutil
+import sys
+sys.path.append(r"/proj/c.zihao/work1/function/")
+import MOSSN_noRWR
+
+available_datasets = ["LUAD", "eLUAD", "KIRC", "PRAD"]
+
+researchAim = '2CPTAC'
+
+for dataset_name in available_datasets:
+    print(f"#========== {dataset_name} ==========")
+    base_dir = f"/proj/c.zihao/work1/1NT/{researchAim}/"
+    save_path = f"{base_dir}/MOSSN_noRWR/{dataset_name}"
+
+    if os.path.exists(save_path):
+        shutil.rmtree(save_path)
+    os.makedirs(save_path)
+    os.chdir(save_path)
+
+    links = pd.read_csv(f"/proj/c.zihao/work1/1NT/1data/string/links.csv", index_col=0)
+    expression_data = pd.read_csv(f"/proj/c.zihao/work1/1NT/2CPTAC/{dataset_name}/{dataset_name}_exprSet_filtered.csv", index_col=0)
+
+    G, real_original_weights, expression_data = MOSSN_noRWR.prepare_data_MOSSN_noRWR(
+        links=links,
+        expression_data=expression_data
+    )
+    print(f"Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
+
+    gamma = 2.0
+
+    for sample_id in tqdm(expression_data.columns, desc="Processing Samples", unit="sample"):
+        edge_weights_df = MOSSN_noRWR.MOSSN_noRWR_single_sample(
+            sample_id=sample_id,
+            G=G,
+            real_original_weights=real_original_weights,
+            expression_data=expression_data,
+            gamma=gamma
+        )
+        edge_weights_df.to_csv(f"{sample_id}_edges.csv", index=False)
