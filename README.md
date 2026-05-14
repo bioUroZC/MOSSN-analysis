@@ -58,12 +58,6 @@ In practice, this means:
 - some scripts will require local path adjustment before they can be executed in another environment
 - not all workflows are expected to run out of the box on a new machine without adaptation
 
-## Scope Of This Release
-
-- Historical `old` analysis folders have been removed from the shared repository snapshot.
-- Core dataset lists used by major survival, drug-response, and coupled-analysis pipelines were synchronized to match their active analysis scripts.
-- The repository currently focuses on code and lightweight documentation rather than bundled result files or downloaded raw datasets.
-
 ## Notes For Readers
 
 - If you are reading this repository alongside the manuscript, start from the folder most relevant to the corresponding analysis section.
