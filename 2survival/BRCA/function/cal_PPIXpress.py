@@ -1,0 +1,35 @@
+import os
+import shutil
+import sys
+
+PROJ_ROOT = os.environ.get("MOSSN_ROOT", "/proj/c.zihao/work1")
+
+sys.path.append(PROJ_ROOT + "/function/")
+import PPIXpress
+
+available_datasets = ["GSE11121", "GSE12093", "GSE162228",
+                      "GSE17705", "GSE20685", "GSE20711",
+                      "GSE21653", "GSE22219", "GSE25055",
+                      "GSE25065", "GSE42568", "GSE45255",
+                      "GSE48390", "GSE61304", "GSE7390",
+                      "TCGABRCA"]
+
+researchAim = "BRCA"
+
+for dataset_name in available_datasets:
+    print(f"#========== {dataset_name} ==========")
+    base_dir = f"{PROJ_ROOT}/2survival/{researchAim}/"
+    save_path = f"{base_dir}/{dataset_name}/PPIXpress"
+
+    if os.path.exists(save_path):
+        shutil.rmtree(save_path)
+    os.makedirs(save_path)
+
+    exprSetFile = f"{base_dir}/{dataset_name}/data/exprSet_filtered.csv"
+    link_file = f"{PROJ_ROOT}/1NT/1data/string/links.csv"
+
+    PPIXpress.PPIXpressCal(
+        exprSetFile=exprSetFile,
+        link_file=link_file,
+        save_path=save_path
+    )

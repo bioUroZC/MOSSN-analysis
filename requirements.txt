@@ -1,0 +1,14 @@
+# Python dependencies for the MOSSN analysis workflows.
+#
+# The analyses reported in the manuscript were run on Python 3.10.
+# Install with:
+#     pip install -r requirements.txt
+#
+# The MOSSN algorithms themselves depend only on numpy, pandas, networkx and
+# scipy; tqdm is used for progress reporting in the driver scripts.
+
+numpy
+pandas
+networkx
+scipy
+tqdm

@@ -1,0 +1,56 @@
+# ── Python ───────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# ── R ────────────────────────────────────────────────────────────────────
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+.Renviron
+
+# ── OS / editor ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+~$*
+*.swp
+*~
+.vscode/
+.idea/
+
+# ── Input data and generated results ─────────────────────────────────────
+# This repository ships code only. Input data are downloaded by the scripts
+# in each module, and sample-specific network matrices are regenerated from
+# them. The patterns below keep large data and intermediate results out of
+# version control.
+*.csv
+*.tsv
+*.rds
+*.RDS
+*.rda
+*.h5
+*.gz
+*.bz2
+*.zip
+*.tar
+*.xlsx
+*.xls
+
+# figures / reports produced by the plotting scripts
+*.pdf
+*.tif
+*.tiff
+*.png
+*.jpg
+*.svg
+
+# generated output directories
+1Matrix/
+1result/
+results/

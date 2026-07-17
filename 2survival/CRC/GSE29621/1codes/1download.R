@@ -1,0 +1,123 @@
+# ===============================================================
+
+# ===============================================================
+
+rm(list=ls())
+
+PROJ_ROOT <- Sys.getenv("MOSSN_ROOT", "/proj/c.zihao/work1")
+
+setwd(paste0(PROJ_ROOT, "/1survival/CRC/GSE29621/data/"))
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(GEOquery)
+Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 12)
+
+# ===============================================================
+#
+# ===============================================================
+
+gse<- getGEO("GSE29621", destdir = ".") 
+gpl<- getGEO('GPL570', destdir = ".") 
+
+gpl <- gpl@dataTable@table
+colnames(gpl)
+gpl <- gpl %>% dplyr::select(ID, "Gene Symbol")
+write.csv(gpl, file = 'gpl.csv')
+
+gpl <- read.csv('gpl.csv', header = TRUE, row.names = 1)
+head(gpl)
+
+gpl <- gpl %>%
+  tidyr::separate("Gene.Symbol", c('gene', 'symbol'), sep = '\\///') %>%
+  dplyr::select("ID", 'gene')
+
+gpl$gene <- gdata::trim(gpl$gene)
+
+
+# ===============================================================
+#
+# ===============================================================
+
+exprSet <- as.data.frame(exprs(gse$GSE29621_series_matrix.txt.gz)) 
+exprSet$ID = rownames(exprSet)
+express = merge(x=gpl, y=exprSet, by="ID")
+express$ID = NULL
+express[which(is.na(express),arr.ind = T)]<-0 
+express[1:4,1:4]
+
+exprSet <- aggregate(x = express[,2:ncol(express)],
+                     by = list(express$gene),
+                     FUN = max)
+head(exprSet)
+exprSet <- as.data.frame(exprSet)
+exprSet[1:4,1:4]
+
+exprSet <-exprSet[-1,]
+names(exprSet)[1] <- 'ID'
+rownames(exprSet) <- exprSet$ID
+exprSet$ID <- NULL
+
+min(exprSet)
+max(exprSet)
+
+# ===============================================================
+#
+# ===============================================================
+
+pd <- pData(gse$GSE29621_series_matrix.txt.gz)
+head(pd)
+
+pd <- subset(pd, select=c( "geo_accession" ,
+                           "gender:ch1",   "ajcc staging:ch1" , 
+                           "t stage:ch1", "n stage:ch1", "m stage (0:ch1",
+                         "os event:ch1" ,  "overall survival (os):ch1"  ))
+names(pd) <- c("Sample",  "Gender", "Stage", "Tstage", "Nstage", "Mstage",    "OS", "OS_Time")
+table(pd$OS)
+str(pd)
+
+table(pd$Gender)
+pd$Gender <- ifelse(pd$Gender == 'FEMALE', "Female", "Male")
+table(pd$Gender)
+
+table(pd$OS)
+pd$OS <- ifelse(pd$OS == 'alive', 0, 1)
+pd$OS <- as.numeric(as.character(pd$OS))
+table(pd$OS)
+
+
+pd$OS_Time <- as.numeric(as.character(pd$OS_Time))
+pd$OS_Time <- pd$OS_Time / 12
+pd$OS_Time <- round(pd$OS_Time, 2)
+str(pd)
+
+table(pd$Stage)
+
+
+pd <- pd[!is.na(pd$OS) & !is.na(pd$OS_Time), ]
+pd <- subset(pd, pd$OS_Time > 0)
+str(pd)
+
+
+table(pd$Gender)
+table(pd$OS)
+mean(pd$OS_Time)
+
+#=======================================================
+
+#=======================================================
+
+samplesname <- intersect(pd$Sample, colnames(exprSet))
+samplesname <- unique(samplesname)
+pd <- pd[which(pd$Sample %in% samplesname),]
+exprSet <- exprSet[,which(colnames(exprSet) %in% samplesname)]
+colnames(exprSet)
+
+#=======================================================
+
+#=======================================================
+
+exprSet[1:5,1:5]
+write.csv(exprSet, file = "exprSet.csv")
+write.csv(pd, file = "pd.csv")
+
